@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>族譜系統</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      gap: 20px;
+      padding: 20px;
+    }
+    #form {
+      width: 300px;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+    }
+    #tree {
+      border-left: 2px solid #ccc;
+      padding-left: 20px;
+    }
+    .person {
+      margin: 5px 0;
+    }
+    .children {
+      margin-left: 20px;
+      border-left: 1px dashed #aaa;
+      padding-left: 10px;
+    }
+    .male {
+      color: #0077cc;
+    }
+    .female {
+      color: #cc0077;
+    }
+    .photo {
+      width: 60px;
+      height: 60px;
+      object-fit: cover;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <div id="form">
+    <h2>新增人物</h2>
+    <label>姓名：<input id="name" type="text"></label>
+    <label>出生日期：<input id="dob" type="date"></label>
+    <label>性別：
+      <select id="gender">
+        <option value="男">男</option>
+        <option value="女">女</option>
+      </select>
+    </label>
+    <label>父母姓名（空白則為根）<input id="parent" type="text"></label>
+    <label>大頭貼上傳：<input id="photo" type="file" accept="image/*" onchange="previewPhoto(event)"></label>
+    <img id="preview" src="" style="display:none; width:80px; height:80px; object-fit:cover; margin-top:10px;" />
+    <button onclick="addPerson()">新增人物</button>
+    <button onclick="downloadHTML()">下載族譜 HTML</button>
+    <button onclick="saveData()">儲存族譜資料</button>
+    <button onclick="loadData()">載入族譜資料</button>
+    <textarea id="savedData" rows="10" style="width:100%; margin-top:10px;" placeholder="貼上儲存的資料"></textarea>
+  </div>
+  <div>
+    <h2>族譜</h2>
+    <div id="tree"></div>
+  </div>
+
+  <script>
+    const family = {};
+
+    function previewPhoto(event) {
+      const reader = new FileReader();
+      reader.onload = function () {
+        document.getElementById('preview').src = reader.result;
+        document.getElementById('preview').style.display = 'block';
+      };
+      reader.readAsDataURL(event.target.files[0]);
+    }
+
+    function addPerson() {
+      const name = document.getElementById('name').value.trim();
+      const dob = document.getElementById('dob').value;
+      const gender = document.getElementById('gender').value;
+      const parent = document.getElementById('parent').value.trim();
+      const photo = document.getElementById('preview').src;
+
+      if (!name) return alert('請輸入姓名');
+
+      family[name] = family[name] || { children: [] };
+      family[name].name = name;
+      family[name].dob = dob;
+      family[name].gender = gender;
+      family[name].photo = photo;
+      family[name].children = family[name].children || [];
+
+      if (parent && family[parent]) {
+        if (!family[parent].children.includes(name)) {
+          family[parent].children.push(name);
+        }
+      }
+
+      document.getElementById('photo').value = '';
+      document.getElementById('preview').style.display = 'none';
+
+      renderTree();
+    }
+
+    function renderTree(root = null, container = document.getElementById('tree')) {
+      if (!root) {
+        container.innerHTML = '';
+        for (let key in family) {
+          if (!Object.values(family).some(p => p.children.includes(key))) {
+            renderTree(key, container);
+          }
+        }
+        return;
+      }
+
+      const person = family[root];
+      const div = document.createElement('div');
+      div.className = 'person ' + (person.gender === '男' ? 'male' : 'female');
+      div.innerHTML = `
+        ${person.photo ? `<img src="${person.photo}" class="photo" />` : ''}
+        ${person.name}（${person.gender}，${person.dob}）
+        <button onclick="editPerson('${person.name}')">編輯</button>
+        <button onclick="deletePerson('${person.name}')">刪除</button>
+      `;
+      container.appendChild(div);
+
+      if (person.children.length) {
+        const childrenDiv = document.createElement('div');
+        childrenDiv.className = 'children';
+        container.appendChild(childrenDiv);
+        person.children.forEach((child, index) => {
+          const orderDiv = document.createElement('div');
+          orderDiv.textContent = `第${index + 1}子：`;
+          childrenDiv.appendChild(orderDiv);
+          renderTree(child, childrenDiv);
+        });
+      }
+    }
+
+    function editPerson(name) {
+      const person = family[name];
+      document.getElementById('name').value = person.name;
+      document.getElementById('dob').value = person.dob;
+      document.getElementById('gender').value = person.gender;
+      document.getElementById('preview').src = person.photo || '';
+      document.getElementById('preview').style.display = person.photo ? 'block' : 'none';
+    }
+
+    function deletePerson(name) {
+      for (let key in family) {
+        const idx = family[key].children.indexOf(name);
+        if (idx !== -1) family[key].children.splice(idx, 1);
+      }
+      delete family[name];
+      renderTree();
+    }
+
+    function downloadHTML() {
+      const blob = new Blob([document.documentElement.outerHTML], {type: 'text/html'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'family_tree.html';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function saveData() {
+      document.getElementById('savedData').value = JSON.stringify(family, null, 2);
+    }
+
+    function loadData() {
+      try {
+        const data = JSON.parse(document.getElementById('savedData').value);
+        for (let key in data) {
+          family[key] = data[key];
+        }
+        renderTree();
+      } catch (e) {
+        alert('載入失敗：資料格式錯誤');
+      }
+    }
+  </script>
+</body>
+</html>
